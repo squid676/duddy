@@ -35,8 +35,21 @@ exports.handler = async (event) => {
     });
   }
 
-  const path = event.path || "";
-  const subpath = path.replace(/^\/\.netlify\/functions\/api/, "");
+  const urlPath = (() => {
+    try {
+      const u = new URL(event.rawUrl || event.url || "", "https://example.com");
+      return u.pathname || "";
+    } catch {
+      return event.path || "";
+    }
+  })();
+
+  let subpath = urlPath
+    .replace(/^\/\.netlify\/functions\/api/, "")
+    .replace(/^\/api/, "");
+
+  if (!subpath.startsWith("/")) subpath = `/${subpath}`;
+
 
   try {
     // /api/food/search?q=...
