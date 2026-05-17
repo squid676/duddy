@@ -47,47 +47,85 @@ exports.handler = async (event) => {
   let subpath = urlPath
     .replace(/^\/\.netlify\/functions\/api/, "")
     .replace(/^\/api/, "");
-
   if (!subpath.startsWith("/")) subpath = `/${subpath}`;
 
-
   try {
-const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(
-  q
-)}&page_size=20&fields=code,product_name,brands,image_url,nutriments,serving_size`;
+    // GET /api/food/search?q=...
+    if (event.httpMethod === "GET" && subpath === "/food/search") {
+      const q = event.queryStringParameters?.q;
+      if (!q) return json(400, { error: "Query is required" });
 
-const response = await fetch(url, {
-  headers: {
-    "User-Agent": "NutriStack - Web - 1.0",
-    "Accept": "application/json",
-  },
-});
+      const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(
+        q
+      )}&page_size=20&fields=code,product_name,brands,image_url,nutriments,serving_size`;
 
-const contentType = response.headers.get("content-type") || "";
-if (!response.ok) {
-  const raw = await response.text();
-  return json(500, { error: "OpenFoodFacts search failed", status: response.status, raw: raw.slice(0, 500) });
-}
-if (!contentType.includes("application/json")) {
-  const raw = await response.text();
-  return json(500, { error: "OpenFoodFacts returned non-JSON", contentType, raw: raw.slice(0, 500) });
-}
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "NutriStack - Web - 1.0",
+          Accept: "application/json",
+        },
+      });
 
-const data = await response.json();
-return json(200, data);
+      const contentType = response.headers.get("content-type") || "";
+      const raw = await response.text();
+
+      if (!response.ok) {
+        return json(500, {
+          error: "OpenFoodFacts search failed",
+          status: response.status,
+          raw: raw.slice(0, 500),
+        });
+      }
+
+      if (!contentType.includes("application/json")) {
+        return json(500, {
+          error: "OpenFoodFacts returned non-JSON",
+          contentType,
+          raw: raw.slice(0, 500),
+        });
+      }
+
+      return json(200, JSON.parse(raw));
     }
 
-    // /api/food/barcode/:code
+    // GET /api/food/barcode/:code
     const barcodeMatch = subpath.match(/^\/food\/barcode\/([^/]+)$/);
     if (event.httpMethod === "GET" && barcodeMatch) {
       const code = barcodeMatch[1];
-      const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(code)}.json`;
-      const response = await fetch(url, { headers: { "User-Agent": "NutriStack - Web - 1.0" } });
-      const data = await response.json();
-      return json(200, data);
+      const url = `https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(
+        code
+      )}.json`;
+
+      const response = await fetch(url, {
+        headers: {
+          "User-Agent": "NutriStack - Web - 1.0",
+          Accept: "application/json",
+        },
+      });
+
+      const contentType = response.headers.get("content-type") || "";
+      const raw = await response.text();
+
+      if (!response.ok) {
+        return json(500, {
+          error: "OpenFoodFacts barcode lookup failed",
+          status: response.status,
+          raw: raw.slice(0, 500),
+        });
+      }
+
+      if (!contentType.includes("application/json")) {
+        return json(500, {
+          error: "OpenFoodFacts returned non-JSON",
+          contentType,
+          raw: raw.slice(0, 500),
+        });
+      }
+
+      return json(200, JSON.parse(raw));
     }
 
-    // /api/nutrition/vision
+    // POST /api/nutrition/vision
     if (event.httpMethod === "POST" && subpath === "/nutrition/vision") {
       const apiKey = process.env.GEMINI_API_KEY;
       if (!apiKey) return json(500, { error: "GEMINI_API_KEY is not set on the server." });
@@ -112,12 +150,7 @@ return json(200, data);
           headers: { "content-type": "application/json" },
           body: JSON.stringify({
             contents: [
-              {
-                parts: [
-                  { inlineData: { mimeType: "image/jpeg", data: base64Data } },
-                  { text: prompt },
-                ],
-              },
+              { parts: [{ inlineData: { mimeType: "image/jpeg", data: base64Data } }, { text: prompt }] },
             ],
             generationConfig: { temperature: 0.2 },
           }),
@@ -141,7 +174,7 @@ return json(200, data);
       }
     }
 
-    return json(404, { error: "Not found" });
+    return json(404, { error: "Not found", subpath });
   } catch (e) {
     return json(500, { error: "Server error", message: e?.message || String(e) });
   }
