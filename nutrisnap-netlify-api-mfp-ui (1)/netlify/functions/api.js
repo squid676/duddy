@@ -52,18 +52,29 @@ exports.handler = async (event) => {
 
 
   try {
-    // /api/food/search?q=...
-    if (event.httpMethod === "GET" && subpath === "/food/search") {
-      const q = event.queryStringParameters?.q;
-      if (!q) return json(400, { error: "Query is required" });
+const url = `https://world.openfoodfacts.org/api/v2/search?search_terms=${encodeURIComponent(
+  q
+)}&page_size=20&fields=code,product_name,brands,image_url,nutriments,serving_size`;
 
-      const url = `https://world.openfoodfacts.org/cgi/search.pl?search_terms=${encodeURIComponent(
-        q
-      )}&search_simple=1&action=process&json=1&page_size=20`;
+const response = await fetch(url, {
+  headers: {
+    "User-Agent": "NutriStack - Web - 1.0",
+    "Accept": "application/json",
+  },
+});
 
-      const response = await fetch(url, { headers: { "User-Agent": "NutriStack - Web - 1.0" } });
-      const data = await response.json();
-      return json(200, data);
+const contentType = response.headers.get("content-type") || "";
+if (!response.ok) {
+  const raw = await response.text();
+  return json(500, { error: "OpenFoodFacts search failed", status: response.status, raw: raw.slice(0, 500) });
+}
+if (!contentType.includes("application/json")) {
+  const raw = await response.text();
+  return json(500, { error: "OpenFoodFacts returned non-JSON", contentType, raw: raw.slice(0, 500) });
+}
+
+const data = await response.json();
+return json(200, data);
     }
 
     // /api/food/barcode/:code
